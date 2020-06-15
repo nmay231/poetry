@@ -802,3 +802,62 @@ Package operations: 1 install, 0 updates, 0 removals
 """
 
     assert expected in tester.io.fetch_output()
+
+
+def test_add_should_sort_dependencies(app, repo, installer):
+    from tomlkit import comment
+
+    content = app.poetry.file.read()
+    dependencies = content["tool"]["poetry"]["dependencies"]
+
+    for package in "unordered list of package names".split():
+        dependencies[package] = "^1.0"
+        repo.add_package(get_package(package, "1.0.0"))
+
+    repo.add_package(get_package("package2", "1.0.0"))
+    repo.add_package(get_package("package3", "1.0.0"))
+    dependencies.add(comment("This comment represents a manual edit"))
+    dependencies["package2"] = "^1.0"
+
+    app.poetry.file.write(content)
+
+    command = app.find("add")
+    tester = CommandTester(command)
+
+    tester.execute("package3")
+    expected_unsorted = """\
+# Requirements
+[tool.poetry.dependencies]
+python = "~2.7 || ^3.4"
+unordered = "^1.0"
+list = "^1.0"
+of = "^1.0"
+package = "^1.0"
+names = "^1.0"
+# This comment represents a manual edit
+package2 = "^1.0"
+package3 = "^1.0.0"
+"""
+
+    assert expected_unsorted in app.poetry.file.read().as_string()
+
+    # Remove comment and allow `poetry add` to sort packages
+    del dependencies.value._body[-2]
+    app.poetry.file.write(content)
+
+    # (Note: package3 is not in pyproject.toml because we overrode it)
+    tester.execute("package3")
+    expect_sorted = """\
+# Requirements
+[tool.poetry.dependencies]
+python = "~2.7 || ^3.4"
+list = "^1.0"
+names = "^1.0"
+of = "^1.0"
+package = "^1.0"
+package2 = "^1.0"
+package3 = "^1.0.0"
+unordered = "^1.0"
+"""
+
+    assert expect_sorted in app.poetry.file.read().as_string()

@@ -128,6 +128,13 @@ If you do not specify a version constraint, poetry will choose a suitable one ba
 
             poetry_content[section][_constraint["name"]] = constraint
 
+        # If not edited manually (comments/whitespace), sort the section
+        raw_entries = poetry_content[section].value.body[:-1]
+        if all(key for key, _ in raw_entries):
+            poetry_content[section] = self._sort_toml_table(
+                poetry_content[section], keep_at_top=["python"]
+            )
+
         # Write new content
         self.poetry.file.write(content)
 
@@ -164,3 +171,20 @@ If you do not specify a version constraint, poetry will choose a suitable one ba
             self.poetry.file.write(original_content)
 
         return status
+
+    def _sort_toml_table(self, tbl, keep_at_top):
+        from copy import deepcopy
+
+        tbl = deepcopy(tbl)
+
+        tbl.value._body = sorted(
+            (entry for entry in tbl.value.body if str(entry[0]) in keep_at_top),
+            key=lambda entry: str(entry[0]),
+        ) + sorted(
+            (entry for entry in tbl.value.body if str(entry[0]) not in keep_at_top),
+            key=lambda entry: str(entry[0]),
+        )
+
+        # Strip extra newline from last entry that is randomly added
+        tbl.value.body[-1][1].trivia.trail = ""
+        return tbl
